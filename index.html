@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#120d29">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Groan Tube</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overscroll-behavior: none; }
+  body {
+    margin: 0; overflow: hidden; touch-action: manipulation;
+    user-select: none; -webkit-user-select: none;
+    background: radial-gradient(120% 90% at 50% 0%, #45307a 0%, #241a4d 45%, #120d29 100%);
+    color: #fff;
+    font-family: ui-rounded, -apple-system, "SF Pro Rounded", "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  #stage {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    padding: calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 14px);
+  }
+
+  header {
+    width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .chip {
+    font-size: 13px; font-weight: 700; letter-spacing: .4px;
+    background: rgba(255,255,255,.09); border: 1px solid rgba(255,255,255,.16);
+    padding: 7px 12px; border-radius: 999px; backdrop-filter: blur(6px);
+    white-space: nowrap;
+  }
+  button.chip { color: #fff; cursor: pointer; font-family: inherit; }
+  h1 {
+    margin: 0; font-size: 17px; letter-spacing: 3px; font-weight: 900;
+    color: #ffd166; text-shadow: 0 2px 10px rgba(255,209,102,.35);
+    text-align: center; flex: 1;
+  }
+
+  #tubeArea { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 0; }
+  #tubeWrap { cursor: pointer; padding: 20px 30px; }
+  #tubeWrap.shaking { animation: shake .45s ease-in-out; }
+  @keyframes shake {
+    0%, 100% { transform: translate(0,0) rotate(0); }
+    15% { transform: translate(-9px, 4px) rotate(-4deg); }
+    30% { transform: translate(8px, -5px) rotate(3.5deg); }
+    45% { transform: translate(-8px, -3px) rotate(-3deg); }
+    60% { transform: translate(7px, 4px) rotate(2.5deg); }
+    75% { transform: translate(-5px, 2px) rotate(-2deg); }
+    90% { transform: translate(4px, -2px) rotate(1.2deg); }
+  }
+
+  #tube {
+    position: relative;
+    width: clamp(96px, 26vw, 140px);
+    height: min(50vh, 400px);
+    display: flex; flex-direction: column; align-items: center;
+    transform: rotate(0deg);
+    transition: transform .65s cubic-bezier(.34, 1.45, .55, 1);
+    filter: drop-shadow(0 26px 34px rgba(0,0,0,.5));
+  }
+  #tube .cap {
+    width: 116%; height: 34px; border-radius: 17px; z-index: 2;
+    background: linear-gradient(180deg, #ff7b6b, #c1121f 55%, #8d0b14);
+    box-shadow: inset 0 -3px 6px rgba(0,0,0,.35), inset 0 3px 5px rgba(255,255,255,.25);
+  }
+  #tube .body {
+    flex: 1; width: 100%; margin: -6px 0; border-radius: 26px; position: relative; overflow: hidden;
+    background:
+      radial-gradient(60% 40% at 30% 12%, rgba(255,255,255,.28), transparent 60%),
+      linear-gradient(100deg, #ff6b6b 0%, #e63946 45%, #b51d27 100%);
+    box-shadow: inset 0 10px 18px rgba(255,255,255,.15), inset 0 -14px 22px rgba(0,0,0,.35);
+  }
+  #tube .shine {
+    position: absolute; top: 6%; bottom: 6%; left: 12%; width: 14%; border-radius: 10px;
+    background: linear-gradient(rgba(255,255,255,.5), rgba(255,255,255,.06));
+    filter: blur(2px);
+  }
+
+  .face {
+    position: absolute; top: 15%; left: 0; right: 0;
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+  }
+  .eyes { display: flex; gap: 22px; }
+  .eye {
+    width: 24px; height: 28px; background: #fff; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,.2); transition: transform .12s;
+  }
+  .pupil { width: 11px; height: 13px; background: #2b1a1a; border-radius: 50%; margin-top: 4px; }
+  .mouth {
+    width: 34px; height: 10px; margin-top: 2px;
+    border-radius: 0 0 18px 18px; background: #5c0e14;
+    box-shadow: inset 0 3px 4px rgba(0,0,0,.5);
+    transition: width .1s, height .1s, border-radius .1s, background .1s;
+  }
+  .face.groan .eye { transform: scaleY(.55); }
+  .face.groan .mouth {
+    width: 40px; height: 52px; border-radius: 20px 20px 24px 24px; background: #4a080d;
+  }
+
+  #hint, #status { font-size: 13px; opacity: .7; margin: 10px 0 0; text-align: center; line-height: 1.45; }
+  #status { margin-top: 8px; font-size: 12px; opacity: .55; font-variant-numeric: tabular-nums; }
+
+  #controls { display: flex; gap: 14px; width: 100%; max-width: 420px; margin-top: 12px; }
+  #controls button {
+    flex: 1; padding: 16px 10px; font-size: 17px; font-weight: 800; letter-spacing: .5px;
+    color: #fff; border-radius: 18px; border: 1px solid rgba(255,255,255,.22);
+    cursor: pointer; font-family: inherit;
+    background: linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.05));
+    box-shadow: 0 6px 18px rgba(0,0,0,.35); transition: transform .08s;
+  }
+  #controls button:active { transform: scale(.94); }
+
+  #overlay {
+    position: fixed; inset: 0; z-index: 20;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px;
+    background: rgba(13,9,29,.72); backdrop-filter: blur(10px);
+    transition: opacity .45s, visibility .45s;
+  }
+  #overlay.hide { opacity: 0; visibility: hidden; }
+  #startBtn {
+    width: 190px; height: 190px; border-radius: 50%; border: none; cursor: pointer;
+    color: #fff; font-family: inherit; font-size: 18px; font-weight: 800; letter-spacing: 1px;
+    background: radial-gradient(120% 120% at 30% 25%, #ff7b6b, #d62828 60%, #9d0208);
+    box-shadow: 0 18px 50px rgba(214,40,40,.45), inset 0 4px 10px rgba(255,255,255,.3);
+    animation: pulse 1.8s ease-in-out infinite;
+    display: flex; flex-direction: column; gap: 6px; align-items: center; justify-content: center;
+  }
+  #startBtn span { font-size: 44px; line-height: 1; }
+  @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+  #overlay p { opacity: .75; font-size: 14px; text-align: center; max-width: 280px; line-height: 1.5; margin: 0; padding: 0 16px; }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <header>
+      <div class="chip" id="count">GROANS × 0</div>
+      <h1>GROAN TUBE</h1>
+      <button class="chip" id="mute" title="Mute">🔊</button>
+    </header>
+
+    <div id="tubeArea">
+      <div id="tubeWrap" title="Click to flip">
+        <div id="tube">
+          <div class="cap top"></div>
+          <div class="body">
+            <div class="shine"></div>
+            <div class="face" id="face">
+              <div class="eyes">
+                <div class="eye"><div class="pupil"></div></div>
+                <div class="eye"><div class="pupil"></div></div>
+              </div>
+              <div class="mouth"></div>
+            </div>
+          </div>
+          <div class="cap bottom"></div>
+        </div>
+      </div>
+    </div>
+
+    <p id="hint">Flip your phone upside down &mdash; or shake it!</p>
+    <div id="controls">
+      <button id="flipBtn">🔄 FLIP</button>
+      <button id="shakeBtn">📳 SHAKE</button>
+    </div>
+    <p id="status"></p>
+  </div>
+
+  <div id="overlay">
+    <button id="startBtn"><span>▶</span>TAP TO PLAY</button>
+    <p>Turn your sound on. This toy uses motion sensors to hear flips &amp; shakes &mdash; buttons work everywhere.</p>
+  </div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const tube = $('#tube'), tubeWrap = $('#tubeWrap'), face = $('#face'),
+      hint = $('#hint'), statusEl = $('#status'), countEl = $('#count'),
+      muteBtn = $('#mute'), overlay = $('#overlay'), startBtn = $('#startBtn');
+
+const status = t => { statusEl.textContent = t; };
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+/* ================= AUDIO ================= */
+let ctx = null, master = null, noiseBuf = null, distCurve = null, muted = false;
+
+function initAudio() {
+  if (ctx) return;
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  master = ctx.createGain();
+  master.gain.value = 0.9;
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -14; comp.knee.value = 20; comp.ratio.value = 5;
+  master.connect(comp); comp.connect(ctx.destination);
+
+  distCurve = makeDistCurve(24);
+  noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.1), ctx.sampleRate);
+  const d = noiseBuf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+}
+
+function makeDistCurve(k) {
+  const n = 1024, c = new Float32Array(n), deg = Math.PI / 180;
+  for (let i = 0; i < n; i++) {
+    const x = i * 2 / n - 1;
+    c[i] = (3 + k) * x * 20 * deg / (Math.PI + k * Math.abs(x));
+  }
+  return c;
+}
+
+function clickNoise(t, vol) {
+  const s = ctx.createBufferSource(); s.buffer = noiseBuf;
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass'; bp.frequency.value = 2400 + Math.random() * 800; bp.Q.value = 1;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+  s.connect(bp); bp.connect(g); g.connect(master);
+  s.start(t); s.stop(t + 0.08);
+}
+
+// A groan tube always groans DOWNWARD when flipped: the weight inside falls,
+// the reed pitch glides down and gets wobblier as it dies out.
+function groan({ dur = 0.9, f0 = 210, f1 = 75, vol = 0.5, wob = 16, tick = 0.2 } = {}) {
+  if (!ctx || muted) return;
+  const t = ctx.currentTime + 0.02;
+
+  const o1 = ctx.createOscillator(); o1.type = 'sawtooth';
+  const o2 = ctx.createOscillator(); o2.type = 'square'; o2.detune.value = 9;
+  const o2g = ctx.createGain(); o2g.gain.value = 0.4;
+  [o1, o2].forEach(o => {
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  });
+
+  // Wobble that speeds up and deepens toward the end of the groan
+  const lfo = ctx.createOscillator(); lfo.type = 'sine';
+  lfo.frequency.setValueAtTime(6.5, t);
+  lfo.frequency.linearRampToValueAtTime(11, t + dur);
+  const lfoG = ctx.createGain();
+  lfoG.gain.setValueAtTime(3, t);
+  lfoG.gain.linearRampToValueAtTime(wob, t + dur * 0.85);
+  lfo.connect(lfoG); lfoG.connect(o1.frequency); lfoG.connect(o2.frequency);
+
+  // Rasp + vocal "ugh" tone
+  const pre = ctx.createGain(); pre.gain.value = 0.7;
+  const ws = ctx.createWaveShaper(); ws.curve = distCurve; ws.oversample = '2x';
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.8;
+  lp.frequency.setValueAtTime(700, t);
+  lp.frequency.linearRampToValueAtTime(1500, t + dur * 0.7);
+  const pk = ctx.createBiquadFilter();
+  pk.type = 'peaking'; pk.frequency.value = 620; pk.Q.value = 1.1; pk.gain.value = 9;
+
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.06);
+  g.gain.setValueAtTime(vol, t + dur * 0.55);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+  o1.connect(pre); o2.connect(o2g); o2g.connect(pre);
+  pre.connect(ws); ws.connect(lp); lp.connect(pk); pk.connect(g); g.connect(master);
+
+  [o1, o2, lfo].forEach(o => { o.start(t); o.stop(t + dur + 0.05); });
+  if (tick > 0) clickNoise(t, tick);
+}
+
+function chirp(intensity = 1) {
+  const up = Math.random() < 0.5;
+  const hi = 220 + Math.random() * 160, lo = 90 + Math.random() * 60;
+  groan({
+    dur: 0.12 + Math.random() * 0.14,
+    f0: up ? lo : hi, f1: up ? hi : lo,
+    vol: 0.22 + 0.2 * intensity, wob: 22, tick: 0.12,
+  });
+}
+
+/* ================= TOY ================= */
+let rot = 0, faceTimer = 0, shakeTimer = 0, groans = 0;
+
+function bump() { countEl.textContent = `GROANS × ${++groans}`; }
+
+function faceReact(sec) {
+  face.classList.add('groan');
+  clearTimeout(faceTimer);
+  faceTimer = setTimeout(() => face.classList.remove('groan'), sec * 1000);
+}
+
+function pulseShake(sec = 0.5) {
+  tubeWrap.classList.remove('shaking');
+  void tubeWrap.offsetWidth; // restart animation
+  tubeWrap.classList.add('shaking');
+  clearTimeout(shakeTimer);
+  shakeTimer = setTimeout(() => tubeWrap.classList.remove('shaking'), sec * 1000);
+}
+
+function doFlip(speed = 0.75) {
+  rot += 180;
+  tube.style.transform = `rotate(${rot}deg)`;
+  const dur = 0.55 + (1 - speed) * 0.55;           // slow flip → long groan
+  const f0 = 175 + speed * 120 + Math.random() * 25; // fast flip → higher start
+  groan({ dur, f0, f1: 62 + Math.random() * 18, vol: 0.5, wob: 15 + speed * 10, tick: 0.22 });
+  faceReact(dur);
+  pulseShake(0.35);
+  bump();
+}
+
+function doShake(n = 4) {
+  pulseShake(0.55);
+  for (let i = 0; i < n; i++) {
+    setTimeout(() => { chirp(0.6 + Math.random() * 0.6); bump(); }, i * (90 + Math.random() * 90));
+  }
+  faceReact(0.45);
+}
+
+/* ================= MOTION ================= */
+let motionOn = false, gotEvent = false;
+let sm = { x: 0, y: 0, z: -9.81 };       // smoothed gravity
+let armed = false, refPhi = 0, refT = 0, lastGroanT = 0, lastChirpT = 0;
+
+function attachMotion() {
+  if (motionOn) return;
+  window.addEventListener('devicemotion', onMotion);
+  motionOn = true;
+  setTimeout(() => {
+    if (!gotEvent) status('No motion events — this page needs HTTPS on a phone. Buttons still work!');
+  }, 1500);
+}
+
+function onMotion(e) {
+  gotEvent = true;
+  const a = e.accelerationIncludingGravity;
+  if (!a || a.x == null) return;
+
+  const k = 0.35;
+  sm.x += k * (a.x - sm.x); sm.y += k * (a.y - sm.y); sm.z += k * (a.z - sm.z);
+  const now = performance.now();
+
+  // Shake → short chirps on acceleration spikes
+  let lin = e.acceleration;
+  if (!lin || lin.x == null) lin = { x: a.x - sm.x, y: a.y - sm.y, z: a.z - sm.z };
+  const mag = Math.hypot(lin.x, lin.y, lin.z);
+  if (mag > 5 && now - lastChirpT > 110) {
+    lastChirpT = now;
+    chirp(clamp((mag - 5) / 14, 0.15, 1));
+    bump();
+  }
+
+  // Flip = the screen-plane gravity angle swings ~180°
+  const strength = Math.hypot(sm.x, sm.y);
+  if (strength < 3.5) { armed = false; return; }   // lying flat: flips undefined
+  const phi = Math.atan2(sm.x, -sm.y);
+  if (!armed) { armed = true; refPhi = phi; refT = now; return; }
+
+  let d = phi - refPhi;
+  d = Math.atan2(Math.sin(d), Math.cos(d));
+  if (Math.abs(d) > 1.85 && now - lastGroanT > 380) {
+    const rps = Math.abs(d) / Math.max(0.12, (now - refT) / 1000);
+    doFlip(clamp(rps / 7, 0.25, 1));
+    refPhi = phi; refT = now; lastGroanT = now;
+  }
+}
+
+/* ================= UI ================= */
+flipBtn.addEventListener('click', () => doFlip(0.8));
+shakeBtn.addEventListener('click', () => doShake(4));
+tubeWrap.addEventListener('click', () => doFlip(0.7));
+
+addEventListener('keydown', e => {
+  if (e.repeat) return;
+  const k = e.key.toLowerCase();
+  if (k === 'f' || k === ' ') { e.preventDefault(); doFlip(0.8); }
+  if (k === 's') doShake(4);
+});
+
+muteBtn.addEventListener('click', () => {
+  muted = !muted;
+  muteBtn.textContent = muted ? '🔇' : '🔊';
+  if (master) master.gain.value = muted ? 0 : 0.9;
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (!ctx) return;
+  if (document.hidden) ctx.suspend(); else ctx.resume();
+});
+document.addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('gesturestart', e => e.preventDefault());
+
+startBtn.addEventListener('click', async () => {
+  initAudio();
+  ctx.resume();
+  overlay.classList.add('hide');
+  hint.textContent = ('ontouchstart' in window || navigator.maxTouchPoints > 0)
+    ? 'Flip your phone upside down — or shake it!'
+    : 'Click the tube, press F to flip, S to shake.';
+
+  const DME = window.DeviceMotionEvent;
+  try {
+    if (DME && typeof DME.requestPermission === 'function') {
+      const r = await DME.requestPermission();
+      if (r === 'granted') { attachMotion(); status('Motion live — flip or shake your phone!'); }
+      else status('Motion blocked — use the buttons below.');
+    } else if (DME) {
+      attachMotion();
+      status('Waiting for sensor…');
+    } else {
+      status('No motion sensor here — use the buttons (or F / S keys).');
+    }
+  } catch (err) {
+    status('Motion unavailable — buttons still work.');
+  }
+});
+})();
+</script>
+</body>
+</html>
