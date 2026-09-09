@@ -92,15 +92,13 @@
   }
   .pupil { width: 11px; height: 13px; background: #2b1a1a; border-radius: 50%; margin-top: 4px; }
   .mouth {
-    width: 34px; height: 10px; margin-top: 2px;
-    border-radius: 0 0 18px 18px; background: #5c0e14;
+    position: absolute; top: 44px; left: 50%;
+    width: 34px; height: 52px;
+    border-radius: 20px 20px 24px 24px; background: #4a080d;
     box-shadow: inset 0 3px 4px rgba(0,0,0,.5);
-    transition: width .1s, height .1s, border-radius .1s, background .1s;
+    transform: translateX(-50%) scaleY(.15); transform-origin: 50% 100%;
   }
   .face.groan .eye { transform: scaleY(.55); }
-  .face.groan .mouth {
-    width: 40px; height: 52px; border-radius: 20px 20px 24px 24px; background: #4a080d;
-  }
 
   #hint, #status { font-size: 13px; opacity: .7; margin: 10px 0 0; text-align: center; line-height: 1.45; }
   #status { margin-top: 8px; font-size: 12px; opacity: .55; font-variant-numeric: tabular-nums; }
@@ -154,7 +152,7 @@
                 <div class="eye"><div class="pupil"></div></div>
                 <div class="eye"><div class="pupil"></div></div>
               </div>
-              <div class="mouth"></div>
+              <div class="mouth" id="mouth"></div>
             </div>
           </div>
           <div class="cap bottom"></div>
@@ -162,7 +160,7 @@
       </div>
     </div>
 
-    <p id="hint">Flip your phone upside down &mdash; or shake it!</p>
+    <p id="hint">Tip your phone past horizontal and the disk starts to fall &mdash; flip it all the way for the big groan!</p>
     <div id="controls">
       <button id="flipBtn">🔄 FLIP</button>
       <button id="shakeBtn">📳 SHAKE</button>
@@ -172,7 +170,7 @@
 
   <div id="overlay">
     <button id="startBtn"><span>▶</span>TAP TO PLAY</button>
-    <p>Turn your sound on. This toy uses motion sensors to hear flips &amp; shakes &mdash; buttons work everywhere.</p>
+    <p>Turn your sound on. This toy uses motion sensors &mdash; a weighted disk falls inside the tube and groans as it goes. Buttons work everywhere.</p>
   </div>
 
 <script>
@@ -180,14 +178,29 @@
 'use strict';
 const $ = s => document.querySelector(s);
 const tube = $('#tube'), tubeWrap = $('#tubeWrap'), face = $('#face'),
-      hint = $('#hint'), statusEl = $('#status'), countEl = $('#count'),
-      muteBtn = $('#mute'), overlay = $('#overlay'), startBtn = $('#startBtn');
+      mouth = $('#mouth'), hint = $('#hint'), statusEl = $('#status'),
+      countEl = $('#count'), muteBtn = $('#mute'), overlay = $('#overlay'),
+      startBtn = $('#startBtn');
 
 const status = t => { statusEl.textContent = t; };
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
-/* ================= AUDIO ================= */
-let ctx = null, master = null, noiseBuf = null, distCurve = null, muted = false;
+/* ============ tuning ============ */
+// Disk physics (tube length = 1.0, v in tube-lengths/second)
+const PHYS = {
+  A: 0.6,        // gravity coupling along the tube axis (per g)
+  DRAG: 1.25,    // viscous drag (air + wall) -> decay time ~0.8s
+  FRICT: 0.3,    // Coulomb friction: disk stalls near horizontal
+  STOPV: 0.02,   // below this speed the disk just stops
+  MAXV: 1.4,
+  BOUNCE: 0.18,  // speed kept when the disk lands on a cap
+};
+// Reed sound (classic tubes sit higher and wail longer than speech)
+const SND = { FMIN: 140, KF: 260, FMAX: 520, GMAX: 0.55, TC: 0.045, LFO_HZ: 7.5 };
+
+/* ============ audio: one persistent reed voice, driven by the disk ============ */
+let ctx = null, master = null, noiseBuf = null, distCurve = null;
+let osc1, osc2, lfoG, voice, airG, muted = false;
 
 function initAudio() {
   if (ctx) return;
@@ -198,10 +211,39 @@ function initAudio() {
   comp.threshold.value = -14; comp.knee.value = 20; comp.ratio.value = 5;
   master.connect(comp); comp.connect(ctx.destination);
 
-  distCurve = makeDistCurve(24);
-  noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.1), ctx.sampleRate);
+  distCurve = makeDistCurve(14);
+  noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.5), ctx.sampleRate);
   const d = noiseBuf.getChannelData(0);
   for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+
+  // reed buzz
+  osc1 = ctx.createOscillator(); osc1.type = 'sawtooth';
+  osc2 = ctx.createOscillator(); osc2.type = 'square'; osc2.detune.value = 8;
+  const o2g = ctx.createGain(); o2g.gain.value = 0.3;
+  osc1.frequency.value = SND.FMIN; osc2.frequency.value = SND.FMIN;
+
+  // wobble: pitch vibrato + tremolo, the classic "groan" warble
+  const lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = SND.LFO_HZ;
+  lfoG = ctx.createGain(); lfoG.gain.value = 0;
+  lfo.connect(lfoG); lfoG.connect(osc1.frequency); lfoG.connect(osc2.frequency);
+
+  const pre = ctx.createGain(); pre.gain.value = 0.8;
+  const ws = ctx.createWaveShaper(); ws.curve = distCurve; ws.oversample = '2x';
+  const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 120;
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400; lp.Q.value = 0.7;
+  const pk = ctx.createBiquadFilter(); pk.type = 'peaking'; pk.frequency.value = 950; pk.Q.value = 1.1; pk.gain.value = 9;
+  voice = ctx.createGain(); voice.gain.value = 0;
+
+  osc1.connect(pre); osc2.connect(o2g); o2g.connect(pre);
+  pre.connect(ws); ws.connect(hp); hp.connect(lp); lp.connect(pk); pk.connect(voice); voice.connect(master);
+
+  // rushing air through the valve
+  const air = ctx.createBufferSource(); air.buffer = noiseBuf; air.loop = true;
+  const airBp = ctx.createBiquadFilter(); airBp.type = 'bandpass'; airBp.frequency.value = 1500; airBp.Q.value = 0.5;
+  airG = ctx.createGain(); airG.gain.value = 0;
+  air.connect(airBp); airBp.connect(airG); airG.connect(master);
+
+  osc1.start(); osc2.start(); lfo.start(); air.start();
 }
 
 function makeDistCurve(k) {
@@ -213,168 +255,170 @@ function makeDistCurve(k) {
   return c;
 }
 
-function clickNoise(t, vol) {
+// map disk speed -> reed pitch, loudness, wobble, air
+function updateSound() {
+  if (!ctx) return;
+  const v = Math.abs(disk.v);
+  const f = clamp(SND.FMIN + SND.KF * v, 150, SND.FMAX);
+  const g = Math.pow(Math.min(1, v / 0.9), 1.15) * SND.GMAX;
+  const t = ctx.currentTime;
+  osc1.frequency.setTargetAtTime(f, t, SND.TC);
+  osc2.frequency.setTargetAtTime(f, t, SND.TC);
+  lfoG.gain.setTargetAtTime(f * 0.075, t, 0.1);
+  voice.gain.setTargetAtTime(g, t, 0.06);
+  airG.gain.setTargetAtTime(0.05 * Math.min(1, v / 0.7), t, 0.08);
+
+  mouth.style.transform = `translateX(-50%) scaleY(${(0.12 + (g / SND.GMAX) * 0.88).toFixed(3)})`;
+  face.classList.toggle('groan', g > 0.05);
+}
+
+function thud(impact) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
   const s = ctx.createBufferSource(); s.buffer = noiseBuf;
   const bp = ctx.createBiquadFilter();
-  bp.type = 'bandpass'; bp.frequency.value = 2400 + Math.random() * 800; bp.Q.value = 1;
+  bp.type = 'bandpass'; bp.frequency.value = 500 + Math.random() * 250; bp.Q.value = 1;
   const g = ctx.createGain();
-  g.gain.setValueAtTime(vol, t);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+  g.gain.setValueAtTime(Math.min(0.4, impact * 0.45), t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
   s.connect(bp); bp.connect(g); g.connect(master);
-  s.start(t); s.stop(t + 0.08);
+  s.start(t); s.stop(t + 0.1);
 }
 
-// A groan tube always groans DOWNWARD when flipped: the weight inside falls,
-// the reed pitch glides down and gets wobblier as it dies out.
-function groan({ dur = 0.9, f0 = 210, f1 = 75, vol = 0.5, wob = 16, tick = 0.2 } = {}) {
-  if (!ctx || muted) return;
-  const t = ctx.currentTime + 0.02;
+/* ============ the hidden disk ============ */
+const disk = { p: 0, v: 0 };   // p: 0 = one cap, 1 = the other; invisible on purpose
+let motionLive = false, virtualGs = 1;   // "gravity" used when there is no sensor
 
-  const o1 = ctx.createOscillator(); o1.type = 'sawtooth';
-  const o2 = ctx.createOscillator(); o2.type = 'square'; o2.detune.value = 9;
-  const o2g = ctx.createGain(); o2g.gain.value = 0.4;
-  [o1, o2].forEach(o => {
-    o.frequency.setValueAtTime(f0, t);
-    o.frequency.exponentialRampToValueAtTime(f1, t + dur);
-  });
+function stepDisk(dt) {
+  const c = motionLive ? clamp(sm.y / 9.81, -1, 1) : virtualGs;
+  const drive = -c * PHYS.A;             // gravity component along the tube axis
 
-  // Wobble that speeds up and deepens toward the end of the groan
-  const lfo = ctx.createOscillator(); lfo.type = 'sine';
-  lfo.frequency.setValueAtTime(6.5, t);
-  lfo.frequency.linearRampToValueAtTime(11, t + dur);
-  const lfoG = ctx.createGain();
-  lfoG.gain.setValueAtTime(3, t);
-  lfoG.gain.linearRampToValueAtTime(wob, t + dur * 0.85);
-  lfo.connect(lfoG); lfoG.connect(o1.frequency); lfoG.connect(o2.frequency);
+  let v = disk.v + drive * dt - PHYS.DRAG * disk.v * dt;
+  const fr = PHYS.FRICT * dt;
+  if (Math.abs(v) <= fr) v = 0; else v -= Math.sign(v) * fr;
+  if (Math.abs(v) < PHYS.STOPV && Math.abs(drive) < PHYS.FRICT) v = 0;
+  disk.v = clamp(v, -PHYS.MAXV, PHYS.MAXV);
+  disk.p += disk.v * dt;
 
-  // Rasp + vocal "ugh" tone
-  const pre = ctx.createGain(); pre.gain.value = 0.7;
-  const ws = ctx.createWaveShaper(); ws.curve = distCurve; ws.oversample = '2x';
-  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.8;
-  lp.frequency.setValueAtTime(700, t);
-  lp.frequency.linearRampToValueAtTime(1500, t + dur * 0.7);
-  const pk = ctx.createBiquadFilter();
-  pk.type = 'peaking'; pk.frequency.value = 620; pk.Q.value = 1.1; pk.gain.value = 9;
-
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(vol, t + 0.06);
-  g.gain.setValueAtTime(vol, t + dur * 0.55);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-
-  o1.connect(pre); o2.connect(o2g); o2g.connect(pre);
-  pre.connect(ws); ws.connect(lp); lp.connect(pk); pk.connect(g); g.connect(master);
-
-  [o1, o2, lfo].forEach(o => { o.start(t); o.stop(t + dur + 0.05); });
-  if (tick > 0) clickNoise(t, tick);
-}
-
-function chirp(intensity = 1) {
-  const up = Math.random() < 0.5;
-  const hi = 220 + Math.random() * 160, lo = 90 + Math.random() * 60;
-  groan({
-    dur: 0.12 + Math.random() * 0.14,
-    f0: up ? lo : hi, f1: up ? hi : lo,
-    vol: 0.22 + 0.2 * intensity, wob: 22, tick: 0.12,
-  });
-}
-
-/* ================= TOY ================= */
-let rot = 0, faceTimer = 0, shakeTimer = 0, groans = 0;
-
-function bump() { countEl.textContent = `GROANS × ${++groans}`; }
-
-function faceReact(sec) {
-  face.classList.add('groan');
-  clearTimeout(faceTimer);
-  faceTimer = setTimeout(() => face.classList.remove('groan'), sec * 1000);
-}
-
-function pulseShake(sec = 0.5) {
-  tubeWrap.classList.remove('shaking');
-  void tubeWrap.offsetWidth; // restart animation
-  tubeWrap.classList.add('shaking');
-  clearTimeout(shakeTimer);
-  shakeTimer = setTimeout(() => tubeWrap.classList.remove('shaking'), sec * 1000);
-}
-
-function doFlip(speed = 0.75) {
-  rot += 180;
-  tube.style.transform = `rotate(${rot}deg)`;
-  const dur = 0.55 + (1 - speed) * 0.55;           // slow flip → long groan
-  const f0 = 175 + speed * 120 + Math.random() * 25; // fast flip → higher start
-  groan({ dur, f0, f1: 62 + Math.random() * 18, vol: 0.5, wob: 15 + speed * 10, tick: 0.22 });
-  faceReact(dur);
-  pulseShake(0.35);
-  bump();
-}
-
-function doShake(n = 4) {
-  pulseShake(0.55);
-  for (let i = 0; i < n; i++) {
-    setTimeout(() => { chirp(0.6 + Math.random() * 0.6); bump(); }, i * (90 + Math.random() * 90));
+  if (disk.p > 1) {
+    disk.p = 1;
+    if (disk.v > 0.12) { thud(disk.v); disk.v = -disk.v * PHYS.BOUNCE; }
+    else disk.v = 0;
+  } else if (disk.p < 0) {
+    disk.p = 0;
+    if (disk.v < -0.12) { thud(-disk.v); disk.v = -disk.v * PHYS.BOUNCE; }
+    else disk.v = 0;
   }
-  faceReact(0.45);
 }
 
-/* ================= MOTION ================= */
-let motionOn = false, gotEvent = false;
-let sm = { x: 0, y: 0, z: -9.81 };       // smoothed gravity
-let armed = false, refPhi = 0, refT = 0, lastGroanT = 0, lastChirpT = 0;
-
-function attachMotion() {
-  if (motionOn) return;
-  window.addEventListener('devicemotion', onMotion);
-  motionOn = true;
-  setTimeout(() => {
-    if (!gotEvent) status('No motion events — this page needs HTTPS on a phone. Buttons still work!');
-  }, 1500);
+/* ============ main loop ============ */
+let lastT = performance.now();
+function loop() {
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - lastT) / 1000);
+  lastT = now;
+  stepDisk(dt);
+  updateSound();
+  setTimeout(loop, 16);
 }
+loop();
+
+/* ============ motion ============ */
+let sm = { x: 0, y: 0, z: -9.81 };
+let cPrev = null, cPrevT = 0, omegaS = 0, flipDir = 0, lastShake = 0;
 
 function onMotion(e) {
-  gotEvent = true;
   const a = e.accelerationIncludingGravity;
   if (!a || a.x == null) return;
+  motionLive = true;
 
   const k = 0.35;
   sm.x += k * (a.x - sm.x); sm.y += k * (a.y - sm.y); sm.z += k * (a.z - sm.z);
   const now = performance.now();
 
-  // Shake → short chirps on acceleration spikes
+  // shaking rattles the disk with random impulses
   let lin = e.acceleration;
   if (!lin || lin.x == null) lin = { x: a.x - sm.x, y: a.y - sm.y, z: a.z - sm.z };
   const mag = Math.hypot(lin.x, lin.y, lin.z);
-  if (mag > 5 && now - lastChirpT > 110) {
-    lastChirpT = now;
-    chirp(clamp((mag - 5) / 14, 0.15, 1));
-    bump();
+  if (mag > 6.5 && now - lastShake > 130) {
+    lastShake = now;
+    rattle(Math.min(1, (mag - 6.5) / 12));
   }
 
-  // Flip = the screen-plane gravity angle swings ~180°
-  const strength = Math.hypot(sm.x, sm.y);
-  if (strength < 3.5) { armed = false; return; }   // lying flat: flips undefined
-  const phi = Math.atan2(sm.x, -sm.y);
-  if (!armed) { armed = true; refPhi = phi; refT = now; return; }
+  // gravity along the phone's long axis, in g
+  const c = clamp(sm.y / 9.81, -1, 1);
+  if (cPrev !== null && now > cPrevT) {
+    const th = Math.acos(clamp(c, -1, 1)), thp = Math.acos(clamp(cPrev, -1, 1));
+    const omega = Math.abs(th - thp) / ((now - cPrevT) / 1000);
+    omegaS += 0.3 * (omega - omegaS);
+  }
+  cPrev = c; cPrevT = now;
 
-  let d = phi - refPhi;
-  d = Math.atan2(Math.sin(d), Math.cos(d));
-  if (Math.abs(d) > 1.85 && now - lastGroanT > 380) {
-    const rps = Math.abs(d) / Math.max(0.12, (now - refT) / 1000);
-    doFlip(clamp(rps / 7, 0.25, 1));
-    refPhi = phi; refT = now; lastGroanT = now;
+  // a flip = the phone's ends actually swap (tips past horizontal with margin)
+  const dir = c > 0.2 ? 1 : c < -0.2 ? -1 : flipDir;
+  if (flipDir !== 0 && dir !== flipDir) onFlipEvent(dir);
+  if (flipDir === 0) flipDir = dir;
+}
+
+function onFlipEvent(dir) {
+  // the flip yanks the disk; harder flips kick it faster -> louder, higher, longer
+  const kick = (0.55 + clamp(omegaS / 7, 0, 1) * 0.5) * -dir;
+  disk.v = clamp(disk.v + kick, -PHYS.MAXV, PHYS.MAXV);
+  rot += 180;
+  tube.style.transform = `rotate(${rot}deg)`;
+  countEl.textContent = `GROANS × ${++groans}`;
+}
+
+function rattle(intensity) {
+  disk.v = clamp(disk.v + (Math.random() * 1.4 - 0.7) * (0.6 + intensity * 0.8), -PHYS.MAXV, PHYS.MAXV);
+  pulseShake();
+}
+
+/* ============ UI ============ */
+let rot = 0, groans = 0, shakeTimer = 0;
+
+function pulseShake() {
+  tubeWrap.classList.remove('shaking');
+  void tubeWrap.offsetWidth;
+  tubeWrap.classList.add('shaking');
+  clearTimeout(shakeTimer);
+  shakeTimer = setTimeout(() => tubeWrap.classList.remove('shaking'), 460);
+}
+
+function buttonFlip() {
+  if (motionLive) {
+    // real sensors: shove the disk toward whichever cap is farther, it groans on the fly
+    const dirTo = disk.p > 0.5 ? -1 : 1;
+    disk.v = clamp(disk.v + dirTo * 0.9, -PHYS.MAXV, PHYS.MAXV);
+  } else {
+    // no sensor: flip the virtual gravity so the disk falls the whole tube
+    virtualGs = -virtualGs;
+    disk.v = clamp(disk.v - Math.sign(virtualGs) * 0.85, -PHYS.MAXV, PHYS.MAXV);
+  }
+  rot += 180;
+  tube.style.transform = `rotate(${rot}deg)`;
+  countEl.textContent = `GROANS × ${++groans}`;
+}
+
+function buttonShake() {
+  pulseShake();
+  const dirTo = disk.p > 0.5 ? -1 : 1;
+  for (let i = 0; i < 5; i++) {
+    setTimeout(() => {
+      disk.v = clamp(disk.v + dirTo * (0.45 + Math.random() * 0.55), -PHYS.MAXV, PHYS.MAXV);
+    }, i * (80 + Math.random() * 80));
   }
 }
 
-/* ================= UI ================= */
-flipBtn.addEventListener('click', () => doFlip(0.8));
-shakeBtn.addEventListener('click', () => doShake(4));
-tubeWrap.addEventListener('click', () => doFlip(0.7));
+flipBtn.addEventListener('click', buttonFlip);
+shakeBtn.addEventListener('click', buttonShake);
+tubeWrap.addEventListener('click', buttonFlip);
 
 addEventListener('keydown', e => {
   if (e.repeat) return;
   const k = e.key.toLowerCase();
-  if (k === 'f' || k === ' ') { e.preventDefault(); doFlip(0.8); }
-  if (k === 's') doShake(4);
+  if (k === 'f' || k === ' ') { e.preventDefault(); buttonFlip(); }
+  if (k === 's') buttonShake();
 });
 
 muteBtn.addEventListener('click', () => {
@@ -390,19 +434,29 @@ document.addEventListener('visibilitychange', () => {
 document.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('gesturestart', e => e.preventDefault());
 
+let motionAttached = false;
+function attachMotion() {
+  if (motionAttached) return;
+  window.addEventListener('devicemotion', onMotion);
+  motionAttached = true;
+  setTimeout(() => {
+    if (!motionLive) status('No motion events — this page needs HTTPS on a phone. Buttons still work!');
+  }, 1500);
+}
+
 startBtn.addEventListener('click', async () => {
   initAudio();
   ctx.resume();
   overlay.classList.add('hide');
   hint.textContent = ('ontouchstart' in window || navigator.maxTouchPoints > 0)
-    ? 'Flip your phone upside down — or shake it!'
+    ? 'Tip your phone past horizontal and the disk starts to fall — flip it all the way for the big groan!'
     : 'Click the tube, press F to flip, S to shake.';
 
   const DME = window.DeviceMotionEvent;
   try {
     if (DME && typeof DME.requestPermission === 'function') {
       const r = await DME.requestPermission();
-      if (r === 'granted') { attachMotion(); status('Motion live — flip or shake your phone!'); }
+      if (r === 'granted') { attachMotion(); status('Motion live — tip the tube past horizontal!'); }
       else status('Motion blocked — use the buttons below.');
     } else if (DME) {
       attachMotion();
