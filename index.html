@@ -462,12 +462,6 @@ startBtn.addEventListener('click', async () => {
   initAudio();
   ctx.resume();
 
-  // keep the page from swinging with OS auto-rotate mid-flip (best effort)
-  try {
-    await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
-    await screen.orientation.lock('portrait');
-  } catch (err) { /* unsupported (e.g. iOS Safari) — no problem */ }
-
   overlay.classList.add('hide');
 
   const DME = window.DeviceMotionEvent;
