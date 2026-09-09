@@ -95,7 +95,7 @@
     display: flex; align-items: center; justify-content: center;
     box-shadow: 0 2px 4px rgba(0,0,0,.2); transition: transform .12s;
   }
-  .pupil { width: 11px; height: 13px; background: #3a1d55; border-radius: 50%; margin-top: 4px; }
+  .pupil { width: 11px; height: 13px; background: #3a1d55; border-radius: 50%; will-change: transform; }
   .mouth {
     position: absolute; top: 44px; left: 50%;
     width: 34px; height: 52px;
@@ -331,6 +331,70 @@ function stepDisk(dt) {
   }
 }
 
+/* ============ googly eyes ============ */
+const pupils = [...document.querySelectorAll('.pupil')].map((el, i) => ({
+  el, x: 0, y: 0, vx: 0, vy: 0, k: i === 0 ? 0.85 : 1.15, // k desyncs the pair
+}));
+let eyeOffsets = null, eyePrevPos = null, eyePrevVel = { x: 0, y: 0 }, eyeAcc = { x: 0, y: 0 };
+
+function measureEyes() {
+  const t = tube.getBoundingClientRect();
+  const cos = Math.cos(theta), sin = Math.sin(theta);
+  eyeOffsets = pupils.map(({ el }) => {
+    const e = el.parentElement.getBoundingClientRect();
+    const sx = (e.left + e.width / 2) - (t.left + t.width / 2);
+    const sy = (e.top + e.height / 2) - (t.top + t.height / 2);
+    return { x: sx * cos + sy * sin, y: -sx * sin + sy * cos }; // undo current rotation
+  });
+  eyePrevPos = null;
+}
+measureEyes();
+addEventListener('resize', measureEyes);
+setTimeout(measureEyes, 900); // re-measure once the webfont has settled the layout
+
+function updateEyes(dt) {
+  if (!eyeOffsets || dt <= 0) return;
+  const t = tube.getBoundingClientRect();
+  const g = screenGravity();
+  const cos = Math.cos(theta), sin = Math.sin(theta);
+
+  // gravity in the tube's own frame: pupils roll to the low end, whatever the orientation
+  const gl = { x: g.x * cos + g.y * sin, y: -g.x * sin + g.y * cos };
+
+  // inertial pseudo-force: how the eye is being thrown around on screen
+  const ec = { x: t.left + t.width / 2 + eyeOffsets[0].x * cos - eyeOffsets[0].y * sin,
+               y: t.top + t.height / 2 + eyeOffsets[0].x * sin + eyeOffsets[0].y * cos };
+  if (eyePrevPos) {
+    const nvx = (ec.x - eyePrevPos.x) / dt, nvy = (ec.y - eyePrevPos.y) / dt;
+    const acc = { x: clamp((nvx - eyePrevVel.x) / dt, -4000, 4000),
+                  y: clamp((nvy - eyePrevVel.y) / dt, -4000, 4000) };
+    eyeAcc.x += 0.4 * (acc.x - eyeAcc.x); eyeAcc.y += 0.4 * (acc.y - eyeAcc.y);
+    eyePrevVel = { x: nvx, y: nvy };
+  }
+  eyePrevPos = ec;
+
+  const RX = 6.5, RY = 7.5; // pupil slack inside the 24x28 socket
+  for (const P of pupils) {
+    const ix = -(eyeAcc.x * cos + eyeAcc.y * sin) * 0.25 * P.k;
+    const iy = -(-eyeAcc.x * sin + eyeAcc.y * cos) * 0.25 * P.k;
+    P.vx += (gl.x * 520 + ix) * dt;
+    P.vy += (gl.y * 520 + iy) * dt;
+    const damp = Math.exp(-7 * dt);
+    P.vx *= damp; P.vy *= damp;
+    P.x += P.vx * dt; P.y += P.vy * dt;
+
+    // keep the pupil inside the socket, bouncing off the rim
+    const ex = P.x / RX, ey = P.y / RY, d = Math.hypot(ex, ey);
+    if (d > 1) {
+      const nx = ex / d, ny = ey / d;
+      P.x = nx * RX; P.y = ny * RY;
+      const vn = P.vx * nx / RX + P.vy * ny / RY;
+      if (vn > 0) { P.vx -= 1.4 * vn * nx / RX; P.vy -= 1.4 * vn * ny / RY; }
+    }
+    P.el.style.transform = `translate(${P.x.toFixed(1)}px, ${P.y.toFixed(1)}px)`;
+  }
+}
+
 /* ============ main loop ============ */
 let lastT = performance.now();
 function loop() {
@@ -346,6 +410,7 @@ function loop() {
   tube.style.transform = `rotate(${theta}rad)`;
 
   stepDisk(dt);
+  updateEyes(dt);
   updateSound();
   setTimeout(loop, 16);
 }
