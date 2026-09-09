@@ -41,7 +41,8 @@
   }
 
   #tubeArea { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 0; }
-  #tubeWrap { cursor: pointer; padding: 20px 30px; }
+  #tubeWrap { cursor: grab; touch-action: none; padding: 20px 30px; }
+  #tubeWrap.dragging { cursor: grabbing; }
   #tubeWrap.shaking { animation: shake .45s ease-in-out; }
   @keyframes shake {
     0%, 100% { transform: translate(0,0) rotate(0); }
@@ -58,8 +59,7 @@
     width: clamp(96px, 26vw, 140px);
     height: min(50vh, 400px);
     display: flex; flex-direction: column; align-items: center;
-    transform: rotate(0deg);
-    transition: transform .65s cubic-bezier(.34, 1.45, .55, 1);
+    transform: rotate(0rad);
     filter: drop-shadow(0 26px 34px rgba(0,0,0,.5));
   }
   #tube .cap {
@@ -103,16 +103,6 @@
   #hint, #status { font-size: 13px; opacity: .7; margin: 10px 0 0; text-align: center; line-height: 1.45; }
   #status { margin-top: 8px; font-size: 12px; opacity: .55; font-variant-numeric: tabular-nums; }
 
-  #controls { display: flex; gap: 14px; width: 100%; max-width: 420px; margin-top: 12px; }
-  #controls button {
-    flex: 1; padding: 16px 10px; font-size: 17px; font-weight: 800; letter-spacing: .5px;
-    color: #fff; border-radius: 18px; border: 1px solid rgba(255,255,255,.22);
-    cursor: pointer; font-family: inherit;
-    background: linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.05));
-    box-shadow: 0 6px 18px rgba(0,0,0,.35); transition: transform .08s;
-  }
-  #controls button:active { transform: scale(.94); }
-
   #overlay {
     position: fixed; inset: 0; z-index: 20;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px;
@@ -142,7 +132,7 @@
     </header>
 
     <div id="tubeArea">
-      <div id="tubeWrap" title="Click to flip">
+      <div id="tubeWrap">
         <div id="tube">
           <div class="cap top"></div>
           <div class="body">
@@ -160,17 +150,13 @@
       </div>
     </div>
 
-    <p id="hint">Tip your phone past horizontal and the disk starts to fall &mdash; flip it all the way for the big groan!</p>
-    <div id="controls">
-      <button id="flipBtn">🔄 FLIP</button>
-      <button id="shakeBtn">📳 SHAKE</button>
-    </div>
+    <p id="hint">Grab the tube and spin it &mdash; turn it upside down and the disk inside falls, groaning all the way.</p>
     <p id="status"></p>
   </div>
 
   <div id="overlay">
     <button id="startBtn"><span>▶</span>TAP TO PLAY</button>
-    <p>Turn your sound on. This toy uses motion sensors &mdash; a weighted disk falls inside the tube and groans as it goes. Buttons work everywhere.</p>
+    <p>Turn your sound on, then grab the tube and spin it. On a phone, tilting the device also changes which way gravity pulls.</p>
   </div>
 
 <script>
@@ -190,13 +176,15 @@ const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const PHYS = {
   A: 0.6,        // gravity coupling along the tube axis (per g)
   DRAG: 1.25,    // viscous drag (air + wall) -> decay time ~0.8s
-  FRICT: 0.3,    // Coulomb friction: disk stalls near horizontal
-  STOPV: 0.02,   // below this speed the disk just stops
+  FRICT: 0.3,    // Coulomb friction: disk stalls when the tube is near level
+  STOPV: 0.02,
   MAXV: 1.4,
   BOUNCE: 0.18,  // speed kept when the disk lands on a cap
 };
 // Reed sound (classic tubes sit higher and wail longer than speech)
 const SND = { FMIN: 140, KF: 260, FMAX: 520, GMAX: 0.55, TC: 0.045, LFO_HZ: 7.5 };
+// Spin feel
+const SPIN = { DAMP: 2.2, MAXSTEP: 0.3, NEAR: 24 };
 
 /* ============ audio: one persistent reed voice, driven by the disk ============ */
 let ctx = null, master = null, noiseBuf = null, distCurve = null;
@@ -286,12 +274,39 @@ function thud(impact) {
 }
 
 /* ============ the hidden disk ============ */
-const disk = { p: 0, v: 0 };   // p: 0 = one cap, 1 = the other; invisible on purpose
-let motionLive = false, virtualGs = 1;   // "gravity" used when there is no sensor
+const disk = { p: 0, v: 0 };        // p: 0 = one cap, 1 = the other; invisible on purpose
+let theta = 0, thetaV = 0;          // tube angle (rad) and spin momentum, user-controlled
+let dragging = false;
+let motionLive = false, gSign = 0;  // gSign calibrated from the first second of sensor data
+let calibN = 0, calibSum = 0;
+
+// screen-space gravity unit vector: straight down, or fed by the phone's sensors
+function screenGravity() {
+  if (motionLive && gSign !== 0) {
+    const m = Math.hypot(sm.x, sm.y);
+    if (m > 1.5) return { x: -gSign * sm.x / 9.81, y: gSign * sm.y / 9.81 };
+  }
+  return { x: 0, y: 1 };
+}
+
+let cPrev = null, dcSm = 0, lastDir = 0;
 
 function stepDisk(dt) {
-  const c = motionLive ? clamp(sm.y / 9.81, -1, 1) : virtualGs;
-  const drive = -c * PHYS.A;             // gravity component along the tube axis
+  const g = screenGravity();
+  const c = g.x * Math.sin(theta) - g.y * Math.cos(theta); // gravity along the tube's top axis
+  const drive = -c * PHYS.A;
+
+  // swinging the tube past level yanks the disk — faster swings kick it harder
+  const dir = c > 0.25 ? 1 : c < -0.25 ? -1 : lastDir;
+  if (lastDir !== 0 && dir !== lastDir) {
+    const kick = clamp(0.35 + Math.abs(dcSm) * 0.12, 0.35, 1.0) * -dir;
+    disk.v = clamp(disk.v + kick, -PHYS.MAXV, PHYS.MAXV);
+    countEl.textContent = `GROANS × ${++groans}`;
+  }
+  lastDir = dir;
+  const dc = cPrev === null ? 0 : (c - cPrev) / Math.max(dt, 0.001);
+  dcSm += 0.3 * (dc - dcSm);
+  cPrev = c;
 
   let v = disk.v + drive * dt - PHYS.DRAG * disk.v * dt;
   const fr = PHYS.FRICT * dt;
@@ -317,15 +332,65 @@ function loop() {
   const now = performance.now();
   const dt = Math.min(0.05, (now - lastT) / 1000);
   lastT = now;
+
+  if (!dragging) {                       // spin momentum after release
+    theta += thetaV * dt;
+    thetaV *= Math.exp(-SPIN.DAMP * dt);
+    if (Math.abs(thetaV) < 0.02) thetaV = 0;
+  }
+  tube.style.transform = `rotate(${theta}rad)`;
+
   stepDisk(dt);
   updateSound();
   setTimeout(loop, 16);
 }
 loop();
 
-/* ============ motion ============ */
-let sm = { x: 0, y: 0, z: -9.81 };
-let cPrev = null, cPrevT = 0, omegaS = 0, flipDir = 0, lastShake = 0;
+/* ============ grab & spin ============ */
+let grab = null;
+
+tubeWrap.addEventListener('pointerdown', e => {
+  dragging = true;
+  try { tubeWrap.setPointerCapture(e.pointerId); } catch (err) {}
+  tubeWrap.classList.add('dragging');
+  const c = tubeCenter();
+  grab = { x: e.clientX - c.x, y: e.clientY - c.y, t: performance.now() };
+  thetaV = 0;
+  e.preventDefault();
+});
+
+tubeWrap.addEventListener('pointermove', e => {
+  if (!dragging || !grab) return;
+  const c = tubeCenter();
+  const px = e.clientX - c.x, py = e.clientY - c.y;
+  const r2 = px * px + py * py;
+  let dth;
+  if (r2 > SPIN.NEAR * SPIN.NEAR) {
+    // rotate so the grabbed point follows the finger/mouse
+    dth = (grab.x * py - grab.y * px) / r2;
+  } else {
+    dth = (e.clientX - (grab.x + c.x)) * 0.005;   // near the center: fall back to horizontal drag
+  }
+  dth = clamp(dth, -SPIN.MAXSTEP, SPIN.MAXSTEP);
+  theta += dth;
+  const now = performance.now();
+  const mdt = Math.max(8, now - grab.t) / 1000;
+  thetaV = 0.75 * thetaV + 0.25 * (dth / mdt);
+  grab = { x: px, y: py, t: now };
+  e.preventDefault();
+});
+
+function endDrag() { dragging = false; grab = null; tubeWrap.classList.remove('dragging'); }
+tubeWrap.addEventListener('pointerup', endDrag);
+tubeWrap.addEventListener('pointercancel', endDrag);
+
+function tubeCenter() {
+  const r = tube.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+}
+
+/* ============ motion: only ever changes where gravity points ============ */
+let sm = { x: 0, y: 0, z: -9.81 }, lastShake = 0;
 
 function onMotion(e) {
   const a = e.accelerationIncludingGravity;
@@ -334,38 +399,22 @@ function onMotion(e) {
 
   const k = 0.35;
   sm.x += k * (a.x - sm.x); sm.y += k * (a.y - sm.y); sm.z += k * (a.z - sm.z);
-  const now = performance.now();
 
-  // shaking rattles the disk with random impulses
+  // calibrate the platform's gravity sign from the first second (phone starts upright)
+  if (calibN < 40) {
+    calibSum += sm.y; calibN++;
+    if (calibN === 40 && Math.abs(calibSum) > 60) gSign = calibSum > 0 ? 1 : -1;
+  }
+
+  // physical shaking rattles the disk
   let lin = e.acceleration;
   if (!lin || lin.x == null) lin = { x: a.x - sm.x, y: a.y - sm.y, z: a.z - sm.z };
   const mag = Math.hypot(lin.x, lin.y, lin.z);
+  const now = performance.now();
   if (mag > 6.5 && now - lastShake > 130) {
     lastShake = now;
     rattle(Math.min(1, (mag - 6.5) / 12));
   }
-
-  // gravity along the phone's long axis, in g
-  const c = clamp(sm.y / 9.81, -1, 1);
-  if (cPrev !== null && now > cPrevT) {
-    const th = Math.acos(clamp(c, -1, 1)), thp = Math.acos(clamp(cPrev, -1, 1));
-    const omega = Math.abs(th - thp) / ((now - cPrevT) / 1000);
-    omegaS += 0.3 * (omega - omegaS);
-  }
-  cPrev = c; cPrevT = now;
-
-  // a flip = the phone's ends actually swap (tips past horizontal with margin)
-  const dir = c > 0.2 ? 1 : c < -0.2 ? -1 : flipDir;
-  if (flipDir !== 0 && dir !== flipDir) onFlipEvent(dir);
-  if (flipDir === 0) flipDir = dir;
-}
-
-function onFlipEvent(dir) {
-  // the flip yanks the disk; harder flips kick it faster -> louder, higher, longer
-  const kick = (0.55 + clamp(omegaS / 7, 0, 1) * 0.5) * -dir;
-  disk.v = clamp(disk.v + kick, -PHYS.MAXV, PHYS.MAXV);
-  countEl.textContent = `GROANS × ${++groans}`;
-  // no visual spin: the phone in your hand IS the tube
 }
 
 function rattle(intensity) {
@@ -374,7 +423,7 @@ function rattle(intensity) {
 }
 
 /* ============ UI ============ */
-let rot = 0, groans = 0, shakeTimer = 0;
+let groans = 0, shakeTimer = 0;
 
 function pulseShake() {
   tubeWrap.classList.remove('shaking');
@@ -383,42 +432,6 @@ function pulseShake() {
   clearTimeout(shakeTimer);
   shakeTimer = setTimeout(() => tubeWrap.classList.remove('shaking'), 460);
 }
-
-function buttonFlip() {
-  countEl.textContent = `GROANS × ${++groans}`;
-  if (motionLive) {
-    // real sensors: shove the disk toward whichever cap is farther, it groans on the fly
-    const dirTo = disk.p > 0.5 ? -1 : 1;
-    disk.v = clamp(disk.v + dirTo * 0.9, -PHYS.MAXV, PHYS.MAXV);
-    return;
-  }
-  // no sensor: flip the virtual gravity so the disk falls the whole tube
-  virtualGs = -virtualGs;
-  disk.v = clamp(disk.v - Math.sign(virtualGs) * 0.85, -PHYS.MAXV, PHYS.MAXV);
-  rot += 180;
-  tube.style.transform = `rotate(${rot}deg)`;
-}
-
-function buttonShake() {
-  pulseShake();
-  const dirTo = disk.p > 0.5 ? -1 : 1;
-  for (let i = 0; i < 5; i++) {
-    setTimeout(() => {
-      disk.v = clamp(disk.v + dirTo * (0.45 + Math.random() * 0.55), -PHYS.MAXV, PHYS.MAXV);
-    }, i * (80 + Math.random() * 80));
-  }
-}
-
-flipBtn.addEventListener('click', buttonFlip);
-shakeBtn.addEventListener('click', buttonShake);
-tubeWrap.addEventListener('click', buttonFlip);
-
-addEventListener('keydown', e => {
-  if (e.repeat) return;
-  const k = e.key.toLowerCase();
-  if (k === 'f' || k === ' ') { e.preventDefault(); buttonFlip(); }
-  if (k === 's') buttonShake();
-});
 
 muteBtn.addEventListener('click', () => {
   muted = !muted;
@@ -439,7 +452,7 @@ function attachMotion() {
   window.addEventListener('devicemotion', onMotion);
   motionAttached = true;
   setTimeout(() => {
-    if (!motionLive) status('No motion events — this page needs HTTPS on a phone. Buttons still work!');
+    if (!motionLive) status('No motion events — tilting the device won’t affect gravity here, but you can still spin the tube!');
   }, 1500);
 }
 
@@ -454,24 +467,21 @@ startBtn.addEventListener('click', async () => {
   } catch (err) { /* unsupported (e.g. iOS Safari) — no problem */ }
 
   overlay.classList.add('hide');
-  hint.textContent = ('ontouchstart' in window || navigator.maxTouchPoints > 0)
-    ? 'Tip your phone past horizontal and the disk starts to fall — flip it all the way for the big groan!'
-    : 'Click the tube, press F to flip, S to shake.';
+  status('Waiting for sensor…');
 
   const DME = window.DeviceMotionEvent;
   try {
     if (DME && typeof DME.requestPermission === 'function') {
       const r = await DME.requestPermission();
-      if (r === 'granted') { attachMotion(); status('Motion live — tip the tube past horizontal!'); }
-      else status('Motion blocked — use the buttons below.');
+      if (r === 'granted') { attachMotion(); status('Motion live — tilting changes gravity. Spin away!'); }
+      else status('Motion blocked — spin the tube with your finger instead.');
     } else if (DME) {
       attachMotion();
-      status('Waiting for sensor…');
     } else {
-      status('No motion sensor here — use the buttons (or F / S keys).');
+      status('Desktop mode — grab the tube with your mouse and spin it.');
     }
   } catch (err) {
-    status('Motion unavailable — buttons still work.');
+    status('Motion unavailable — spin the tube with your finger instead.');
   }
 });
 })();
