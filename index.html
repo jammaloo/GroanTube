@@ -364,9 +364,8 @@ function onFlipEvent(dir) {
   // the flip yanks the disk; harder flips kick it faster -> louder, higher, longer
   const kick = (0.55 + clamp(omegaS / 7, 0, 1) * 0.5) * -dir;
   disk.v = clamp(disk.v + kick, -PHYS.MAXV, PHYS.MAXV);
-  rot += 180;
-  tube.style.transform = `rotate(${rot}deg)`;
   countEl.textContent = `GROANS × ${++groans}`;
+  // no visual spin: the phone in your hand IS the tube
 }
 
 function rattle(intensity) {
@@ -386,18 +385,18 @@ function pulseShake() {
 }
 
 function buttonFlip() {
+  countEl.textContent = `GROANS × ${++groans}`;
   if (motionLive) {
     // real sensors: shove the disk toward whichever cap is farther, it groans on the fly
     const dirTo = disk.p > 0.5 ? -1 : 1;
     disk.v = clamp(disk.v + dirTo * 0.9, -PHYS.MAXV, PHYS.MAXV);
-  } else {
-    // no sensor: flip the virtual gravity so the disk falls the whole tube
-    virtualGs = -virtualGs;
-    disk.v = clamp(disk.v - Math.sign(virtualGs) * 0.85, -PHYS.MAXV, PHYS.MAXV);
+    return;
   }
+  // no sensor: flip the virtual gravity so the disk falls the whole tube
+  virtualGs = -virtualGs;
+  disk.v = clamp(disk.v - Math.sign(virtualGs) * 0.85, -PHYS.MAXV, PHYS.MAXV);
   rot += 180;
   tube.style.transform = `rotate(${rot}deg)`;
-  countEl.textContent = `GROANS × ${++groans}`;
 }
 
 function buttonShake() {
@@ -447,6 +446,13 @@ function attachMotion() {
 startBtn.addEventListener('click', async () => {
   initAudio();
   ctx.resume();
+
+  // keep the page from swinging with OS auto-rotate mid-flip (best effort)
+  try {
+    await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+    await screen.orientation.lock('portrait');
+  } catch (err) { /* unsupported (e.g. iOS Safari) — no problem */ }
+
   overlay.classList.add('hide');
   hint.textContent = ('ontouchstart' in window || navigator.maxTouchPoints > 0)
     ? 'Tip your phone past horizontal and the disk starts to fall — flip it all the way for the big groan!'
