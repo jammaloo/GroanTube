@@ -28,8 +28,9 @@
   }
 
   header {
-    width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    width: 100%; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px;
   }
+  #mute { grid-column: 3; justify-self: end; }
   .chip {
     font-size: 13px; font-weight: 700; letter-spacing: .5px;
     background: rgba(255,255,255,.35); border: 1px solid rgba(92,26,135,.22);
@@ -41,7 +42,7 @@
   h1 {
     margin: 0; font-size: 18px; letter-spacing: 1px; font-weight: 400;
     color: #5c1a87; text-shadow: 0 2px 0 rgba(255,255,255,.4);
-    text-align: center; flex: 1;
+    text-align: center; grid-column: 2;
   }
 
   #tubeArea { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 0; }
@@ -129,7 +130,6 @@
 <body>
   <div id="stage">
     <header>
-      <div class="chip" id="count">GROANS × 0</div>
       <h1>GROAN TUBE</h1>
       <button class="chip" id="mute" title="Mute">🔊</button>
     </header>
@@ -167,7 +167,7 @@
 const $ = s => document.querySelector(s);
 const tube = $('#tube'), tubeWrap = $('#tubeWrap'), face = $('#face'),
       mouth = $('#mouth'), hint = $('#hint'),
-      countEl = $('#count'), muteBtn = $('#mute'), overlay = $('#overlay'),
+      muteBtn = $('#mute'), overlay = $('#overlay'),
       startBtn = $('#startBtn');
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -306,7 +306,6 @@ function stepDisk(dt) {
   if (lastDir !== 0 && dir !== lastDir) {
     const kick = clamp(0.35 + Math.abs(dcSm) * 0.12, 0.35, 1.0) * -dir;
     disk.v = clamp(disk.v + kick, -PHYS.MAXV, PHYS.MAXV);
-    countEl.textContent = `GROANS × ${++groans}`;
   }
   lastDir = dir;
   const dc = cPrev === null ? 0 : (c - cPrev) / Math.max(dt, 0.001);
@@ -428,7 +427,7 @@ function rattle(intensity) {
 }
 
 /* ============ UI ============ */
-let groans = 0, shakeTimer = 0;
+let shakeTimer = 0;
 
 function pulseShake() {
   tubeWrap.classList.remove('shaking');
