@@ -101,7 +101,7 @@
     width: 34px; height: 52px;
     border-radius: 20px 20px 24px 24px; background: #3b0764;
     box-shadow: inset 0 3px 4px rgba(0,0,0,.45);
-    transform: translateX(-50%) scaleY(.15); transform-origin: 50% 100%;
+    transform: translateX(-50%) scaleY(.05); transform-origin: 50% 100%;
   }
   .face.groan .eye { transform: scaleY(.55); }
 
@@ -158,7 +158,7 @@
 
   <div id="overlay">
     <button id="startBtn"><span>▶</span>TAP TO PLAY</button>
-    <p>Sound on! Grab the tube and spin it &mdash; tilt your phone and gravity follows.</p>
+    <p>Sound on! Spin your phone and hear that tune go waahahaa</p>
   </div>
 
 <script>
@@ -261,8 +261,9 @@ function updateSound() {
   airG.gain.setTargetAtTime(0.05 * Math.min(1, v / 0.7), t, 0.08);
   window.__gt = { f, v: disk.v, p: disk.p };
 
-  mouth.style.transform = `translateX(-50%) scaleY(${(0.12 + (g / SND.GMAX) * 0.88).toFixed(3)})`;
-  face.classList.toggle('groan', g > 0.05);
+  // the face follows the disk: fully closed at the bottom cap, wide open at the face end
+  mouth.style.transform = `translateX(-50%) scaleY(${(0.05 + (1 - disk.p) * 0.95).toFixed(3)})`;
+  face.classList.toggle('groan', disk.p < 0.5);
 }
 
 function thud(impact) {
@@ -279,7 +280,7 @@ function thud(impact) {
 }
 
 /* ============ the hidden disk ============ */
-const disk = { p: 0, v: 0 };        // p: 0 = one cap, 1 = the other; invisible on purpose
+const disk = { p: 1, v: 0 };        // starts resting on the bottom cap; invisible on purpose
 let theta = 0, thetaV = 0;          // tube angle (rad) and spin momentum, user-controlled
 let dragging = false;
 let motionLive = false, gSign = 0;  // gSign calibrated from the first second of sensor data
@@ -457,10 +458,12 @@ function attachMotion() {
   motionAttached = true;
 }
 
-startBtn.addEventListener('click', async () => {
+// the tap-to-play screen is only needed where audio/motion require a user gesture (phones)
+const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+async function startMobile() {
   initAudio();
   ctx.resume();
-
   overlay.classList.add('hide');
 
   const DME = window.DeviceMotionEvent;
@@ -471,7 +474,15 @@ startBtn.addEventListener('click', async () => {
       attachMotion();
     }
   } catch (err) { /* no motion — finger-spinning still works */ }
-});
+}
+
+if (isMobile) {
+  startBtn.addEventListener('click', startMobile);
+} else {
+  // desktop: no tap needed — the first grab unlocks audio
+  overlay.classList.add('hide');
+  tubeWrap.addEventListener('pointerdown', () => { initAudio(); ctx.resume(); }, { once: true });
+}
 })();
 </script>
 </body>
