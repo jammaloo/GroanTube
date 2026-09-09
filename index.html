@@ -181,8 +181,9 @@ const PHYS = {
   MAXV: 1.4,
   BOUNCE: 0.18,  // speed kept when the disk lands on a cap
 };
-// Reed sound (classic tubes sit higher and wail longer than speech)
-const SND = { FMIN: 140, KF: 260, FMAX: 520, GMAX: 0.55, TC: 0.045, LFO_HZ: 7.5 };
+// Reed sound (classic tubes sit higher and wail longer than speech).
+// The valve is directional: falling toward the face end is brighter, toward the plain cap deeper.
+const SND = { FMIN: 140, KF: 260, FMAX: 520, GMAX: 0.55, TC: 0.045, LFO_HZ: 7.5, UP: 100, DOWN: 25 };
 // Spin feel
 const SPIN = { DAMP: 2.2, MAXSTEP: 0.3, NEAR: 24 };
 
@@ -247,7 +248,9 @@ function makeDistCurve(k) {
 function updateSound() {
   if (!ctx) return;
   const v = Math.abs(disk.v);
-  const f = clamp(SND.FMIN + SND.KF * v, 150, SND.FMAX);
+  // falling toward the face end (v < 0) gets the brighter register
+  const dirShift = disk.v < 0 ? SND.UP : -SND.DOWN;
+  const f = clamp(SND.FMIN + dirShift + SND.KF * v, 150, SND.FMAX);
   const g = Math.pow(Math.min(1, v / 0.9), 1.15) * SND.GMAX;
   const t = ctx.currentTime;
   osc1.frequency.setTargetAtTime(f, t, SND.TC);
@@ -255,6 +258,7 @@ function updateSound() {
   lfoG.gain.setTargetAtTime(f * 0.075, t, 0.1);
   voice.gain.setTargetAtTime(g, t, 0.06);
   airG.gain.setTargetAtTime(0.05 * Math.min(1, v / 0.7), t, 0.08);
+  window.__gt = { f, v: disk.v, p: disk.p };
 
   mouth.style.transform = `translateX(-50%) scaleY(${(0.12 + (g / SND.GMAX) * 0.88).toFixed(3)})`;
   face.classList.toggle('groan', g > 0.05);
