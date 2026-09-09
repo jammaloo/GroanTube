@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#120d29">
+<meta name="theme-color" content="#ff9de4">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shrikhand&display=swap" rel="stylesheet">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -12,11 +15,11 @@
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; overscroll-behavior: none; }
   body {
-    margin: 0; overflow: hidden; touch-action: manipulation;
+    margin: 0; overflow: hidden; touch-action: none;
     user-select: none; -webkit-user-select: none;
-    background: radial-gradient(120% 90% at 50% 0%, #45307a 0%, #241a4d 45%, #120d29 100%);
-    color: #fff;
-    font-family: ui-rounded, -apple-system, "SF Pro Rounded", "Segoe UI", Roboto, sans-serif;
+    background: #ff9de4;
+    color: #5c1a87;
+    font-family: "Shrikhand", ui-rounded, -apple-system, "Segoe UI", Roboto, sans-serif;
     display: flex; flex-direction: column;
   }
   #stage {
@@ -28,15 +31,16 @@
     width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
   }
   .chip {
-    font-size: 13px; font-weight: 700; letter-spacing: .4px;
-    background: rgba(255,255,255,.09); border: 1px solid rgba(255,255,255,.16);
+    font-size: 13px; font-weight: 700; letter-spacing: .5px;
+    background: rgba(255,255,255,.35); border: 1px solid rgba(92,26,135,.22);
+    color: #5c1a87;
     padding: 7px 12px; border-radius: 999px; backdrop-filter: blur(6px);
     white-space: nowrap;
   }
-  button.chip { color: #fff; cursor: pointer; font-family: inherit; }
+  button.chip { color: #5c1a87; cursor: pointer; font-family: inherit; }
   h1 {
-    margin: 0; font-size: 17px; letter-spacing: 3px; font-weight: 900;
-    color: #ffd166; text-shadow: 0 2px 10px rgba(255,209,102,.35);
+    margin: 0; font-size: 18px; letter-spacing: 1px; font-weight: 400;
+    color: #5c1a87; text-shadow: 0 2px 0 rgba(255,255,255,.4);
     text-align: center; flex: 1;
   }
 
@@ -60,19 +64,19 @@
     height: min(50vh, 400px);
     display: flex; flex-direction: column; align-items: center;
     transform: rotate(0rad);
-    filter: drop-shadow(0 26px 34px rgba(0,0,0,.5));
+    filter: drop-shadow(0 26px 34px rgba(90, 20, 120, .35));
   }
   #tube .cap {
     width: 116%; height: 34px; border-radius: 17px; z-index: 2;
-    background: linear-gradient(180deg, #ff7b6b, #c1121f 55%, #8d0b14);
-    box-shadow: inset 0 -3px 6px rgba(0,0,0,.35), inset 0 3px 5px rgba(255,255,255,.25);
+    background: linear-gradient(180deg, #c084fc, #7e22ce 55%, #581c87);
+    box-shadow: inset 0 -3px 6px rgba(0,0,0,.3), inset 0 3px 5px rgba(255,255,255,.3);
   }
   #tube .body {
     flex: 1; width: 100%; margin: -6px 0; border-radius: 26px; position: relative; overflow: hidden;
     background:
-      radial-gradient(60% 40% at 30% 12%, rgba(255,255,255,.28), transparent 60%),
-      linear-gradient(100deg, #ff6b6b 0%, #e63946 45%, #b51d27 100%);
-    box-shadow: inset 0 10px 18px rgba(255,255,255,.15), inset 0 -14px 22px rgba(0,0,0,.35);
+      radial-gradient(60% 40% at 30% 12%, rgba(255,255,255,.3), transparent 60%),
+      linear-gradient(100deg, #b565f0 0%, #9333ea 45%, #6b21a8 100%);
+    box-shadow: inset 0 10px 18px rgba(255,255,255,.18), inset 0 -14px 22px rgba(40,7,66,.4);
   }
   #tube .shine {
     position: absolute; top: 6%; bottom: 6%; left: 12%; width: 14%; border-radius: 10px;
@@ -90,37 +94,36 @@
     display: flex; align-items: center; justify-content: center;
     box-shadow: 0 2px 4px rgba(0,0,0,.2); transition: transform .12s;
   }
-  .pupil { width: 11px; height: 13px; background: #2b1a1a; border-radius: 50%; margin-top: 4px; }
+  .pupil { width: 11px; height: 13px; background: #3a1d55; border-radius: 50%; margin-top: 4px; }
   .mouth {
     position: absolute; top: 44px; left: 50%;
     width: 34px; height: 52px;
-    border-radius: 20px 20px 24px 24px; background: #4a080d;
-    box-shadow: inset 0 3px 4px rgba(0,0,0,.5);
+    border-radius: 20px 20px 24px 24px; background: #3b0764;
+    box-shadow: inset 0 3px 4px rgba(0,0,0,.45);
     transform: translateX(-50%) scaleY(.15); transform-origin: 50% 100%;
   }
   .face.groan .eye { transform: scaleY(.55); }
 
-  #hint, #status { font-size: 13px; opacity: .7; margin: 10px 0 0; text-align: center; line-height: 1.45; }
-  #status { margin-top: 8px; font-size: 12px; opacity: .55; font-variant-numeric: tabular-nums; }
+  #hint { font-size: 18px; margin: 10px 0 0; text-align: center; line-height: 1.45; }
 
   #overlay {
     position: fixed; inset: 0; z-index: 20;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px;
-    background: rgba(13,9,29,.72); backdrop-filter: blur(10px);
+    background: rgba(58, 15, 94, .5); backdrop-filter: blur(10px);
     transition: opacity .45s, visibility .45s;
   }
   #overlay.hide { opacity: 0; visibility: hidden; }
   #startBtn {
     width: 190px; height: 190px; border-radius: 50%; border: none; cursor: pointer;
-    color: #fff; font-family: inherit; font-size: 18px; font-weight: 800; letter-spacing: 1px;
-    background: radial-gradient(120% 120% at 30% 25%, #ff7b6b, #d62828 60%, #9d0208);
-    box-shadow: 0 18px 50px rgba(214,40,40,.45), inset 0 4px 10px rgba(255,255,255,.3);
+    color: #fff; font-family: inherit; font-size: 18px; font-weight: 400; letter-spacing: 1px;
+    background: radial-gradient(120% 120% at 30% 25%, #c084fc, #9333ea 60%, #6b21a8);
+    box-shadow: 0 18px 50px rgba(147,51,234,.4), inset 0 4px 10px rgba(255,255,255,.35);
     animation: pulse 1.8s ease-in-out infinite;
     display: flex; flex-direction: column; gap: 6px; align-items: center; justify-content: center;
   }
   #startBtn span { font-size: 44px; line-height: 1; }
   @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
-  #overlay p { opacity: .75; font-size: 14px; text-align: center; max-width: 280px; line-height: 1.5; margin: 0; padding: 0 16px; }
+  #overlay p { color: #fff; opacity: .85; font-size: 14px; text-align: center; max-width: 280px; line-height: 1.5; margin: 0; padding: 0 16px; }
 </style>
 </head>
 <body>
@@ -150,13 +153,12 @@
       </div>
     </div>
 
-    <p id="hint">Grab the tube and spin it &mdash; turn it upside down and the disk inside falls, groaning all the way.</p>
-    <p id="status"></p>
+    <p id="hint">Spin me!</p>
   </div>
 
   <div id="overlay">
     <button id="startBtn"><span>▶</span>TAP TO PLAY</button>
-    <p>Turn your sound on, then grab the tube and spin it. On a phone, tilting the device also changes which way gravity pulls.</p>
+    <p>Sound on! Grab the tube and spin it &mdash; tilt your phone and gravity follows.</p>
   </div>
 
 <script>
@@ -164,11 +166,10 @@
 'use strict';
 const $ = s => document.querySelector(s);
 const tube = $('#tube'), tubeWrap = $('#tubeWrap'), face = $('#face'),
-      mouth = $('#mouth'), hint = $('#hint'), statusEl = $('#status'),
+      mouth = $('#mouth'), hint = $('#hint'),
       countEl = $('#count'), muteBtn = $('#mute'), overlay = $('#overlay'),
       startBtn = $('#startBtn');
 
-const status = t => { statusEl.textContent = t; };
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 /* ============ tuning ============ */
@@ -399,7 +400,7 @@ let sm = { x: 0, y: 0, z: -9.81 }, lastShake = 0;
 function onMotion(e) {
   const a = e.accelerationIncludingGravity;
   if (!a || a.x == null) return;
-  motionLive = true;
+  if (!motionLive) { motionLive = true; hint.textContent = 'Spin your phone!'; }
 
   const k = 0.35;
   sm.x += k * (a.x - sm.x); sm.y += k * (a.y - sm.y); sm.z += k * (a.z - sm.z);
@@ -455,9 +456,6 @@ function attachMotion() {
   if (motionAttached) return;
   window.addEventListener('devicemotion', onMotion);
   motionAttached = true;
-  setTimeout(() => {
-    if (!motionLive) status('No motion events — tilting the device won’t affect gravity here, but you can still spin the tube!');
-  }, 1500);
 }
 
 startBtn.addEventListener('click', async () => {
@@ -471,22 +469,15 @@ startBtn.addEventListener('click', async () => {
   } catch (err) { /* unsupported (e.g. iOS Safari) — no problem */ }
 
   overlay.classList.add('hide');
-  status('Waiting for sensor…');
 
   const DME = window.DeviceMotionEvent;
   try {
     if (DME && typeof DME.requestPermission === 'function') {
-      const r = await DME.requestPermission();
-      if (r === 'granted') { attachMotion(); status('Motion live — tilting changes gravity. Spin away!'); }
-      else status('Motion blocked — spin the tube with your finger instead.');
+      if (await DME.requestPermission() === 'granted') attachMotion();
     } else if (DME) {
       attachMotion();
-    } else {
-      status('Desktop mode — grab the tube with your mouse and spin it.');
     }
-  } catch (err) {
-    status('Motion unavailable — spin the tube with your finger instead.');
-  }
+  } catch (err) { /* no motion — finger-spinning still works */ }
 });
 })();
 </script>
